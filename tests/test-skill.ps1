@@ -5,6 +5,7 @@ $scriptsRoot = Join-Path $skillRoot 'scripts'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('notion-anki-vocabulary-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 $mockProcess = $null
+$responseMockProcess = $null
 
 function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw "ASSERTION FAILED: $Message" }
@@ -31,6 +32,14 @@ try {
     $onboardingText = Get-Content -LiteralPath (Join-Path $skillRoot 'references\onboarding.md') -Raw -Encoding UTF8
     foreach ($requiredContract in @('Vocabulary Learning Hub', '词汇整理库', '词条', '主题', '分类', 'Anki', '标记', '媒体', '最近整理')) {
         Assert-True ($onboardingText.Contains($requiredContract)) "Notion bootstrap contract is missing: $requiredContract"
+    }
+    $handwritingGuide = Get-Content -LiteralPath (Join-Path $skillRoot 'references\handwriting-capture.md') -Raw -Encoding UTF8
+    Assert-True ($handwritingGuide.Contains('needs_review')) 'Handwriting review contract is missing.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $scriptsRoot 'recognize-handwriting.ps1')) 'Handwriting recognition helper is missing.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $repoRoot 'docs\windows-getting-started.md')) 'Windows illustrated tutorial is missing.'
+    foreach ($asset in @('docs\assets\notion-first-flow.svg', 'docs\assets\handwriting-flow.svg')) {
+        Assert-True (Test-Path -LiteralPath (Join-Path $repoRoot $asset)) "Tutorial asset is missing: $asset"
+        [xml](Get-Content -LiteralPath (Join-Path $repoRoot $asset) -Raw -Encoding UTF8) | Out-Null
     }
 
     $legacyProfilePath = Join-Path $tempRoot 'legacy-profile.json'
@@ -68,6 +77,31 @@ try {
     Assert-True $ensure.Ready 'ensure-anki did not accept the ready mock server.'
     $initialized = & (Join-Path $scriptsRoot 'initialize-anki.ps1') -ProfilePath $profilePath | ConvertFrom-Json
     Assert-True ($initialized.deck_created -and $initialized.model_created) 'Anki deck/model bootstrap was not exercised.'
+
+    $responseListener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    $responseListener.Start(); $responsePort = ([Net.IPEndPoint]$responseListener.LocalEndpoint).Port; $responseListener.Stop()
+    $responseStatePath = Join-Path $tempRoot 'responses-state.json'
+    $responseMockProcess = Start-Process -FilePath $python -ArgumentList @((Join-Path $PSScriptRoot 'mock_responses.py'), '--port', $responsePort, '--state', $responseStatePath) -PassThru -WindowStyle Hidden
+    Start-Sleep -Milliseconds 250
+    $tinyImagePath = Join-Path $tempRoot 'class-note.png'
+    [IO.File]::WriteAllBytes($tinyImagePath, [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL7uAAAAABJRU5ErkJggg=='))
+    $handwritingDraftPath = Join-Path $tempRoot 'class-note.draft.json'
+    $oldOpenAiKey = $env:OPENAI_API_KEY
+    try {
+        $env:OPENAI_API_KEY = 'test-only-key'
+        $recognition = & (Join-Path $scriptsRoot 'recognize-handwriting.ps1') -ImagePath $tinyImagePath -OutputPath $handwritingDraftPath -Model 'test-model' -Endpoint "http://127.0.0.1:$responsePort/v1/responses" | ConvertFrom-Json
+        Assert-True ($recognition.candidate_count -eq 1 -and $recognition.needs_review) 'Handwriting helper did not return a review-only draft.'
+    }
+    finally {
+        if ($null -eq $oldOpenAiKey) { Remove-Item Env:OPENAI_API_KEY -ErrorAction SilentlyContinue } else { $env:OPENAI_API_KEY = $oldOpenAiKey }
+    }
+    $handwritingDraft = Get-Content -LiteralPath $handwritingDraftPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-True ($handwritingDraft.source_type -eq 'handwritten-photo' -and $handwritingDraft.needs_review) 'Handwriting draft safety markers are missing.'
+    Assert-True ($handwritingDraft.candidates[0].term -eq 'look up' -and $handwritingDraft.candidates[0].needs_review) 'Handwriting draft content is wrong.'
+    $responseState = Get-Content -LiteralPath $responseStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-True ($responseState.path -eq '/v1/responses' -and -not $responseState.request.store) 'Handwriting request must use the non-stored Responses API path.'
+    Assert-True ($responseState.request.input[0].content[1].type -eq 'input_image') 'Handwriting request did not send an image input.'
+    Assert-True ($responseState.request.text.format.type -eq 'json_schema') 'Handwriting request did not require structured output.'
 
     $image1 = Join-Path $tempRoot 'diligent.svg'
     $image2 = Join-Path $tempRoot 'committed.svg'
@@ -146,7 +180,7 @@ exit /b 0
 
     [PSCustomObject]@{
         passed = $true
-        tests = @('structure', 'privacy markers', 'PowerShell syntax', 'Notion bootstrap contract', 'legacy profile upgrade', 'profile configuration', 'doctor', 'connection', 'deck/model bootstrap', 'fallback mnemonic images', 'batch validation', 'first sync', 'split audio', 'unique images', 'idempotent update', 'duplicate-image rejection', 'missing-Anki installer branch', 'manual install')
+        tests = @('structure', 'privacy markers', 'PowerShell syntax', 'Notion bootstrap contract', 'handwriting contract', 'handwriting recognition draft', 'legacy profile upgrade', 'profile configuration', 'doctor', 'connection', 'deck/model bootstrap', 'fallback mnemonic images', 'batch validation', 'first sync', 'split audio', 'unique images', 'idempotent update', 'duplicate-image rejection', 'missing-Anki installer branch', 'manual install')
         sandbox = $tempRoot
         mock_note_count = @($state.notes.PSObject.Properties).Count
         mock_media_count = $state.media_names.Count
@@ -155,4 +189,5 @@ exit /b 0
 finally {
     Remove-Item Env:NOTION_ANKI_TEST_MODE -ErrorAction SilentlyContinue
     if ($null -ne $mockProcess -and -not $mockProcess.HasExited) { Stop-Process -Id $mockProcess.Id -Force }
+    if ($null -ne $responseMockProcess -and -not $responseMockProcess.HasExited) { Stop-Process -Id $responseMockProcess.Id -Force }
 }
