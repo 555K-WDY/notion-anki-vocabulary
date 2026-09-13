@@ -1,6 +1,6 @@
 ---
 name: notion-anki-vocabulary
-description: "Set up and operate a Notion-to-Anki vocabulary pipeline, including first-run Notion database creation, natural-English correction, Chinese scenario prompts, per-item mnemonic images, split pronunciation and example audio, AnkiConnect deduplication, Notion write-back, audits, migration, and scheduled runs. Use when a user wants this vocabulary system even if no Notion page, database, Anki deck, or local profile exists yet. Do not use for unrelated generic Anki imports."
+description: "Set up and operate a Notion-to-Anki vocabulary pipeline, including handwritten-note photo recognition, first-run Notion database creation, natural-English correction, Chinese scenario prompts, per-item mnemonic images, split pronunciation and example audio, AnkiConnect deduplication, Notion write-back, audits, migration, and scheduled runs. Use when a user wants this vocabulary system even if no Notion page, database, Anki deck, or local profile exists yet. Do not use for unrelated generic Anki imports."
 ---
 
 # Notion Anki Vocabulary
@@ -11,6 +11,7 @@ Set up or run the vocabulary workflow end to end. Treat the user's latest Notion
 
 - Read `references/workflow-contract.md` before every sync or audit.
 - Read `references/onboarding.md` for first use, missing configuration, missing Notion structures, or a missing Anki deck/model.
+- Read `references/handwriting-capture.md` before processing a classroom-note photo, an uploaded image, or a Notion page that contains handwritten notes.
 - Read `references/migration.md` only when installing, moving, backing up, or restoring the skill.
 - Read `references/troubleshooting.md` only when a diagnostic or runtime step fails.
 - Use `references/profile.example.json` only as the configuration schema; never edit or publish it with personal IDs.
@@ -26,6 +27,7 @@ Set up or run the vocabulary workflow end to end. Treat the user's latest Notion
 - **Sync:** A valid profile and both services exist. Follow the workflow below.
 - **Audit/repair:** The user asks to compare systems or a prior run is uncertain. Run diagnostics, then perform full reconciliation.
 - **Migration:** The user is installing or restoring on another computer. Read `references/migration.md`.
+- **Handwriting capture:** The user provides a photo, a scan, or a Notion page containing handwritten English. Read `references/handwriting-capture.md`; create a reviewable draft before any database or Anki action.
 
 ## Sync workflow
 
@@ -47,6 +49,14 @@ Set up or run the vocabulary workflow end to end. Treat the user's latest Notion
 12. Inspect the result JSON. Require correct counts, unique fronts, one unique image per processed item, separate target/example audio, and zero missing media. Treat duplicate existing targets or any failed check as incomplete.
 13. Only after a verified Anki write, update each Notion row: set the appropriate learning category, `Anki=已同步`, marker, media, and recent-organisation properties; append the Anki Note ID inside the child page. Remove migrated raw material from the homepage only after it is safely represented in the database and Anki.
 14. Re-fetch Notion and reconcile normalized database targets against the configured Anki deck. Report database count, deck count, missing targets, unexpected targets, duplicate targets, and pending rows. Do not describe the workflow as fully matched unless all required sets and counts agree.
+
+## Handwritten-note workflow
+
+1. Fetch the latest referenced Notion page first. If it contains a photo and the current connector can expose image content, use available visual recognition; otherwise request the original image directly rather than claiming it was read.
+2. Preserve every visible English fragment, Chinese annotation and uncertain mark as `原记录`. Produce a JSON-style draft with `raw_text`, cautious interpretation, confidence and explicit uncertainty.
+3. Mark every photographed candidate `待人工确认` / `needs_review: true`. Do not create a batch, update Notion properties, or touch Anki until the learner has reviewed it.
+4. After confirmation, store the photo or its Notion attachment with the corresponding child page, then follow the normal sync workflow. The photo is evidence, not a replacement for the student's own context.
+5. The optional Windows helper `scripts/recognize-handwriting.ps1` sends a local image to the configured Responses API with `store: false`. It reads `OPENAI_API_KEY` only from the current process; never put the key in a profile, repository or report.
 
 ## Safety and reporting
 

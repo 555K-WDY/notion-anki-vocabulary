@@ -2,6 +2,7 @@
 profile.json
 *.local.json
 *.result.json
+*.handwritten-draft.json
 *.wav
 *.mp3
 mnemonic-*.png
