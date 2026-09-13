@@ -1,0 +1,17 @@
+# Local user configuration and generated data
+profile.json
+*.local.json
+*.result.json
+*.wav
+*.mp3
+mnemonic-*.png
+notion-anki-*-image.*
+
+# Editor, OS, and test output
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+test-results/
+dist/
+*.backup-*

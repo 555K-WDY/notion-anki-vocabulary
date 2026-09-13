@@ -1,0 +1,13 @@
+interface:
+  display_name: "Notion → Anki Vocabulary"
+  short_description: "初始化并同步多模态 Notion–Anki 词汇系统"
+  default_prompt: "使用 $notion-anki-vocabulary 初始化或检查我的词汇系统，并完成同步与核验。"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "notion"
+      description: "Notion connector for creating, reading, and updating the vocabulary workspace"
+
+policy:
+  allow_implicit_invocation: true

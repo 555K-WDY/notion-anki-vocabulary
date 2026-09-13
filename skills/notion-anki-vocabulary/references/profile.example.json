@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "notion": {
+    "page_url": "",
+    "page_id": "",
+    "data_source": "",
+    "database_title": "词汇整理库"
+  },
+  "anki": {
+    "executable": "",
+    "profile": "",
+    "connect_url": "http://127.0.0.1:8765",
+    "deck": "Vocabulary::Active",
+    "model": "Notion Anki Vocabulary",
+    "front_field": "Front",
+    "back_field": "Back"
+  },
+  "schedule": {
+    "enabled": false,
+    "time": "07:00",
+    "timezone": "local"
+  }
+}
